@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Energía EEG en banda alfa · Integración numérica</title>
+  <link rel="stylesheet" href="css/styles.css" />
+  <script>
+    window.MathJax = {
+      tex: { inlineMath: [['$', '$'], ['\\(', '\\)']] },
+      svg: { fontCache: 'global' }
+    };
+  </script>
+  <script async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+</head>
+<body>
+  <header class="hero">
+    <div class="container">
+      <p class="eyebrow">Métodos Numéricos · Proyecto académico</p>
+      <h1>Energía EEG en banda alfa</h1>
+      <p class="subtitle">
+        Comparación de la regla del Trapecio, Simpson 1/3 y Simpson 3/8
+        como métodos de integración numérica aplicados a la densidad espectral
+        de potencia de una señal EEG.
+      </p>
+    </div>
+  </header>
+
+  <main class="container">
+    <nav class="toc">
+      <a href="#presentacion">1. Presentación</a>
+      <a href="#modelo">2. Modelo matemático</a>
+      <a href="#config">3. Configuración</a>
+      <a href="#resultados">4. Resultados</a>
+      <a href="#graficos">5. Gráficos</a>
+      <a href="#interpretacion">6. Interpretación</a>
+    </nav>
+
+    <!-- 1 -->
+    <section id="presentacion" class="card">
+      <h2>1. Presentación del desafío</h2>
+      <p>
+        La electroencefalografía (EEG) registra la actividad eléctrica cortical.
+        Al aplicar la transformada de Fourier a una señal EEG se obtiene la
+        <strong>densidad espectral de potencia</strong> (PSD), $P(f)$, que describe
+        cuánta energía aporta cada frecuencia. La banda <strong>alfa</strong>
+        ($8 \leq f \leq 13$ Hz) es un marcador robusto en neurociencia: aumenta en
+        reposo con ojos cerrados, disminuye durante tareas cognitivas y cambia en
+        la transición al sueño.
+      </p>
+      <p>
+        La inspección visual de un EEG no cuantifica de forma objetiva la energía
+        en una banda. Se necesita una métrica reproducible que integre la PSD
+        sobre la banda de interés. Este proyecto compara tres métodos de
+        integración numérica para calcular esa energía:
+      </p>
+      <p class="formula">
+        $$E_\alpha = \int_a^b P(f)\,df$$
+      </p>
+      <p><strong>Pregunta de investigación:</strong> ¿Cómo cambia la energía
+      integrada en la banda alfa entre reposo, tarea cognitiva y somnolencia, y
+      qué método de integración (Trapecio, Simpson 1/3, Simpson 3/8) ofrece mayor
+      precisión con menor costo computacional para un mismo muestreo espectral?</p>
+      <p><strong>Población beneficiaria:</strong> estudiantes y docentes de
+      neurociencia cuantitativa, investigadores que necesitan una herramienta
+      reproducible para comparar condiciones EEG, y la comunidad académica de la
+      UMSA como recurso didáctico abierto.</p>
+    </section>
+
+    <!-- 2 -->
+    <section id="modelo" class="card">
+      <h2>2. Modelo matemático</h2>
+      <p>Se modela el pico alfa como una gaussiana sobre una línea base:</p>
+      <p class="formula">
+        $$P(f) = P_0 + A\,e^{-\dfrac{(f-\mu)^2}{2\sigma^2}}$$
+      </p>
+      <h3>Variables y unidades</h3>
+      <table class="units">
+        <thead>
+          <tr><th>Símbolo</th><th>Significado</th><th>Unidad</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>$f$</td><td>Frecuencia</td><td>Hz</td></tr>
+          <tr><td>$P(f)$</td><td>Densidad espectral de potencia</td><td>µV²/Hz</td></tr>
+          <tr><td>$P_0$</td><td>Línea base de la PSD</td><td>µV²/Hz</td></tr>
+          <tr><td>$A$</td><td>Amplitud del pico alfa</td><td>µV²/Hz</td></tr>
+          <tr><td>$\mu$</td><td>Frecuencia central del pico</td><td>Hz</td></tr>
+          <tr><td>$\sigma$</td><td>Ancho del pico</td><td>Hz</td></tr>
+          <tr><td>$[a,b]$</td><td>Límites de integración (banda)</td><td>Hz</td></tr>
+          <tr><td>$E_\alpha$</td><td>Energía en banda alfa</td><td>µV²</td></tr>
+        </tbody>
+      </table>
+
+      <h3>Solución analítica de referencia</h3>
+      <p>La integral de la gaussiana se resuelve con la función error:</p>
+      <p class="formula">
+        $$E_\alpha^{\text{exacta}} = P_0(b-a) + \frac{A\sigma\sqrt{2\pi}}{2}
+        \left[\operatorname{erf}\!\left(\frac{b-\mu}{\sigma\sqrt{2}}\right)
+        - \operatorname{erf}\!\left(\frac{a-\mu}{\sigma\sqrt{2}}\right)\right]$$
+      </p>
+      <p class="note">
+        Para evitar el límite de precisión de la aproximación de $\operatorname{erf}$
+        (≈ $10^{-7}$) en la comparación numérica, la aplicación calcula la
+        <strong>referencia de alta precisión</strong> mediante una regla del
+        Trapecio con $N=200{,}000$ subintervalos y, además, muestra el valor
+        analítico con $\operatorname{erf}$ como verificación pedagógica.
+      </p>
+
+      <h3>Escenarios hipotéticos declarados</h3>
+      <p>Los siguientes parámetros son <strong>hipotéticos</strong>, plausibles
+      para simulación docente. No son datos clínicos.</p>
+      <table class="units">
+        <thead>
+          <tr><th>Escenario</th><th>$P_0$</th><th>$A$</th><th>$\mu$</th><th>$\sigma$</th><th>Interpretación</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Reposo, ojos cerrados</td><td>2</td><td>10</td><td>10.0</td><td>1.5</td><td>Alta sincronización alfa</td></tr>
+          <tr><td>Tarea cognitiva</td><td>2</td><td>3</td><td>10.0</td><td>1.5</td><td>Desincronización alfa</td></tr>
+          <tr><td>Somnolencia</td><td>2</td><td>5</td><td>9.5</td><td>2.0</td><td>Pico más ancho y desplazado</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- 3 -->
+    <section id="config" class="card">
+      <h2>3. Configuración de la simulación</h2>
+      <form id="formConfig" class="grid">
+        <label>Escenario
+          <select id="escenario">
+            <option value="reposo">Reposo, ojos cerrados</option>
+            <option value="tarea">Tarea cognitiva</option>
+            <option value="sueno">Somnolencia</option>
+            <option value="custom">Personalizado</option>
+          </select>
+        </label>
+        <label>$P_0$ (µV²/Hz)
+          <input type="number" id="P0" value="2" step="0.1" min="0" />
+        </label>
+        <label>$A$ (µV²/Hz)
+          <input type="number" id="A" value="10" step="0.1" min="0" />
+        </label>
+        <label>$\mu$ (Hz)
+          <input type="number" id="mu" value="10" step="0.1" />
+        </label>
+        <label>$\sigma$ (Hz)
+          <input type="number" id="sigma" value="1.5" step="0.1" min="0.1" />
+        </label>
+        <label>$a$ (Hz)
+          <input type="number" id="a" value="8" step="0.1" />
+        </label>
+        <label>$b$ (Hz)
+          <input type="number" id="b" value="13" step="0.1" />
+        </label>
+        <label>$n$ base (múltiplo de 6)
+          <input type="number" id="n" value="24" step="6" min="6" max="384" />
+        </label>
+      </form>
+      <button type="button" id="btnCalcular" class="btn">Calcular</button>
+      <p class="hint">La secuencia de convergencia utiliza $n, 2n, 4n, 8n, 16n$ (hasta 384).</p>
+      <div id="errorConfig" class="error"></div>
+    </section>
+
+    <!-- 4 -->
+    <section id="resultados" class="card">
+      <h2>4. Resultados</h2>
+      <div id="resumen" class="cards"></div>
+
+      <h3>Tabla comparativa</h3>
+      <p id="leyendaExacta" class="hint"></p>
+      <div class="tabla-wrap">
+        <table id="tabla">
+          <thead>
+            <tr>
+              <th>$n$</th>
+              <th>$h$ (Hz)</th>
+              <th>Trapecio</th>
+              <th>Simpson 1/3</th>
+              <th>Simpson 3/8</th>
+              <th>$E_a$ Trapecio</th>
+              <th>$E_a$ S1/3</th>
+              <th>$E_a$ S3/8</th>
+              <th>$E_r$% Trapecio</th>
+              <th>$E_r$% S1/3</th>
+              <th>$E_r$% S3/8</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- 5 -->
+    <section id="graficos" class="card">
+      <h2>5. Gráficos</h2>
+
+      <h3>Densidad espectral de potencia y banda alfa</h3>
+      <div class="grafico-wrap"><canvas id="grafPSD"></canvas></div>
+
+      <h3>Convergencia: energía calculada vs número de subintervalos $n$</h3>
+      <div class="grafico-wrap"><canvas id="grafConv"></canvas></div>
+
+      <h3>Error absoluto en escala log-log (verificación del orden de convergencia)</h3>
+      <div class="grafico-wrap"><canvas id="grafLog"></canvas></div>
+
+      <p class="slopes">
+        Pendientes ajustadas por mínimos cuadrados en $\log_{10} E_a$ vs $\log_{10} h$:
+        <span class="tag tag-t">Trapecio: <strong id="slopeT">—</strong></span>
+        <span class="tag tag-13">Simpson 1/3: <strong id="slope13">—</strong></span>
+        <span class="tag tag-38">Simpson 3/8: <strong id="slope38">—</strong></span>
+      </p>
+      <p class="hint">
+        Se espera: Trapecio $\approx -2$ (orden 2) y ambos Simpson $\approx -4$ (orden 4).
+      </p>
+    </section>
+
+    <!-- 6 -->
+    <section id="interpretacion" class="card">
+      <h2>6. Interpretación de resultados</h2>
+      <div id="interpretacionTexto"></div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="container">
+      <p>Proyecto académico · Métodos Numéricos · UMSA</p>
+      <p class="small">Los parámetros de simulación son hipotéticos y se declaran como tales. No constituyen evidencia clínica.</p>
+    </div>
+  </footer>
+
+  <script src="js/modelo.js"></script>
+  <script src="js/analitica.js"></script>
+  <script src="js/trapecio.js"></script>
+  <script src="js/simpson13.js"></script>
+  <script src="js/simpson38.js"></script>
+  <script src="js/errores.js"></script>
+  <script src="js/graficas.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>
